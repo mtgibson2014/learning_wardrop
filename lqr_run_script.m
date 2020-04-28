@@ -34,9 +34,7 @@ x_nash = map\co
 
 %% Calculate Rosenthal potential and set gamma, A, B, Q, R, P.
 gamma = 0.5;
-A = gamma*[1/2  0   1/2;
-           1/2 1/2   0 ;
-           0   1/2  1/2];
+A = gamma*eye(3);
 % A = gamma*[1  0   1/2  0;
 %            0  1   0   0;
 %            0   1/2  1/2  0;
@@ -44,9 +42,7 @@ A = gamma*[1/2  0   1/2;
 B = (1-gamma)*eye(3); 
 
 % Old Rosenthal potential
-Q =     [2/3  0  0;
-         0  2/3  0;
-         0   0  2/3];
+Q = eye(3);
 
 % % Rosenthal with x penalty 
 % Q = [0.5*Alpha + mu*ones(3)  0.5*beta_bar; 
@@ -76,20 +72,21 @@ end
 
 
 %% Solve for control
-K_inf = (B'*P*B + R)\(B'*P*A) ;   % where u = -K*x_t
+K_inf = (B'*P*B + R)\(B'*P*A)    % where u = -K*x_t
 
 %% Simulate
 flow_init = [0.30 0.05 0.65] ;  
+x_nash = [1/3 1/3 1/3]' ; 
 
 % Initialize data stores
-xt = [flow_init]' ; 
+xt = flow_init'
 
 steps = 0;
 while steps < 5
     % Choose action
-    ut = -K_inf*(xt) ; 
+    ut = -K_inf*(xt-x_nash) ; 
     % Step env
-    xt = A*(xt) + B*ut;
+    xt = A*(xt-x_nash) + B*ut + x_nash
      % x = [x, xt + x_nash] 
     if all(abs(xt - x_nash) <= err)
         disp("Flow has converged to Nash!")
@@ -110,17 +107,17 @@ xt
 %% Graphing results
 disp("Begin plotting")
 
-figure(1) 
-hold on
-subplot(2,1,1)
-plot(x(1, :),'-o', 'MarkerFaceColor',[.49 1 .63],'MarkerSize', 7)
-plot(x(2, :),'-o', 'MarkerFaceColor',[.49 1 .63],'MarkerSize', 7)
-plot(x(3, :),'-o', 'MarkerFaceColor',[.49 1 .63],'MarkerSize', 7)
-title("Path Flows")
-legend("Path A", "Path B", "Path C")
-
+% figure(1) 
+% hold on
 % subplot(2,1,1)
-% plot();
-% title("Latencies")
-% legend()
-hold off
+% plot(x(1, :),'-o', 'MarkerFaceColor',[.49 1 .63],'MarkerSize', 7)
+% plot(x(2, :),'-o', 'MarkerFaceColor',[.49 1 .63],'MarkerSize', 7)
+% plot(x(3, :),'-o', 'MarkerFaceColor',[.49 1 .63],'MarkerSize', 7)
+% title("Path Flows")
+% legend("Path A", "Path B", "Path C")
+% 
+% % subplot(2,1,1)
+% % plot();
+% % title("Latencies")
+% % legend()
+% hold off
