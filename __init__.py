@@ -1,5 +1,9 @@
-from learning_wardrop.Environment import RoutingEnv
+from learning_wardrop.Networks import BraessNetwork
+from learning_wardrop.RoutingEnvs import BaseIterEnv, RoutingEnv, MultiagentRoutingEnv
 
 __all__ = [
-    "RoutingEnv"
+    "BaseIterEnv",
+    "RoutingEnv",
+    "MultiagentRoutingEnv",
+    "BraessNetwork"
 ]
