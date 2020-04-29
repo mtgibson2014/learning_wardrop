@@ -1,30 +1,32 @@
 clear all 
 
-% From the example
-%
-% See following links
-%   How to check for region and compute opt control: 
-%       https://www.mathworks.com/help/mpc/ug/design-workflow.html#buj6dbz
-%   Examples: 
-%       https://www.mathworks.com/help/mpc/ug/explicit-mpc-control-of-an-aircraft-with-unstable-poles.html#d120e19058
-%   Functions:    
-%       https://www.mathworks.com/help/mpc/referencelist.html?type=function&category=explicit-mpc-design
-%   Properties of Explicit MPC Object:
-%       https://www.mathworks.com/help/mpc/ref/mpc.generateexplicitmpc.html#buikta6-1-EMPCobj
-%
-%
+% Question: Why does the game converge on one-shot even with the
+% constraints on U and the matrices setting being what they are?
+
+% Question 2: Why is the state space only defined with one control
+% solution? When will we ever have more than 1 partitions?
+
+% Seems like having a nonzero R makes it an iterative game. Once R passes
+% 0.15 * eye(3) solution is reached in 3 steps 
 
 %% Set up
-Q = eye(3);
-R = zeros(3);
+Q = [1  0  0;
+     0  1  0;
+     0  0  1];
+% Q = eye(3);
+R = [0 0 0;
+     0 0 0;
+     0 0 0];
 P = eye(3);
-N = 4 ; 
-A = eye(3);
+N = 20 ; 
+A = [1/3 1/3 1/3;
+     1/3  1 1/3;
+     1/3 1/3 1/3];
 B = eye(3);
 gamma = 0.5;
 
 % Routing Game settings
-x0 = [0.30; 0.05; 0.65];
+x0 = [0.30; 0.5; 0.2];
 x_eq = [1/3; 1/3; 1/3];
 simSteps = N;
 % Describe latencies of network
@@ -148,11 +150,19 @@ while step <= simSteps
     end
     if j == -1
         error("Control not found! Game is ending");
-        break
+        %break
     else
         ut(:, step) = mpqpsol.F((j-1)*nU+1:j*nU,:)*xt(:, step) + mpqpsol.G((j-1)*nU+1:j*nU);
+        if ~(u_mass - ep <= ones(nU, 1)'*ut(:, step) <= u_mass + ep)
+            error("Input constraints are violated! Game is ending")
+            break
+        end
         % Step env
         xt(:, step+1) = A*xt(:, step) + B*ut(:, step); 
+        if ~(x_mass-ep<=ones(nX,1)'*xt(:, step+1)<=x_mass+ep)
+            error("State constraints are violated! Game is ending")
+            break
+        end
         step = step + 1 ;
     end
 end
@@ -170,7 +180,7 @@ t = 0:simSteps;
 plot(t, xt(1, :))
 plot(t, xt(2, :))
 plot(t, xt(3, :))
-axis([0 simSteps 0 1])
+axis([0 simSteps 0 inf])
 legend("path p1 (e1)", "path p2 (e2)", "path p3 (e3)")
 ylabel("F_t")
 xlabel("t")
