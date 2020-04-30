@@ -9,34 +9,42 @@ clear all
 % Seems like having a nonzero R makes it an iterative game. Once R passes
 % 0.15 * eye(3) solution is reached in 3 steps 
 
-%% Set up
-Q = [1  0  0;
-     0  1  0;
-     0  0  1];
-% Q = eye(3);
-R = [0 0 0;
-     0 0 0;
-     0 0 0];
-P = eye(3);
-N = 20 ; 
-A = [1/3 1/3 1/3;
-     1/3  1 1/3;
-     1/3 1/3 1/3];
-B = eye(3);
-gamma = 0.5;
+% I just inserted a nonnegative constraint for the input and it gives a
+% nonuniform partition space for the explicit MPC solution.
 
-% Routing Game settings
-x0 = [0.30; 0.5; 0.2];
-x_eq = [1/3; 1/3; 1/3];
-simSteps = N;
+%% Set up
 % Describe latencies of network
 % latencyi(xi) = li*xi + bi
 % L = [l1  0  0;
 %       0 l2  0;
 %       0  0  l3];
 % b = [b1; b2; b3];
-L = eye(3);
+l1 = 1;
+l2 = 1;
+l3 = 1;
+L = diag([l1; l2; l3]);
 b = [0; 0; 0];
+
+% Describe cost in terms of latencies -- *TODO: Yiling*
+Q = L;
+% Q = eye(3);
+R = [0 0  0;
+     0 0.25  0;
+     0 0  0];
+P = Q;
+N = 20 ; 
+A = [1  0  0;
+     0  1  0;
+     0  0  1];
+B = [1  0  0;
+     0  1  0;
+     0  0  1];
+gamma = 0.5;
+
+% Routing Game settings
+x0 = [0.30; 0.5; 0.2];
+x_eq = [1/3; 1/3; 1/3];
+simSteps = N;
 
 % Setting params
 nX = size(A,2);
@@ -52,13 +60,17 @@ u_max = ones(nU, 1);
 x_min = zeros(nX, 1);
 x_max = ones(nX, 1);
 ep = 0.0001;
-Au = [ones(1, nU);
+Au = [-eye(nU);
+      ones(1, nU);
       -ones(1, nU)] ;
-bu = [u_mass+ep;
-     -u_mass+ep] ; 
-Ax = [ones(1, nX);
+bu = [u_min;
+      u_mass+ep;
+     -u_mass+ep] ;
+Ax = [-eye(nX);
+       ones(1, nX);
       -ones(1, nX)] ; 
-bx = [x_mass+ep;
+bx = [x_min;
+      x_mass+ep;
      -x_mass+ep] ;
 % u_min = zeros(nU, 1);
 % u_max = ones(nU, 1);
@@ -124,9 +136,8 @@ thmax = x_max ;
 %% Solve mpQP
 % mpqpsol = computeMPQP(Q_mp,F_mp,c_mp,G,W,S,[0;0;0],[1;1;1],verbose,options);
 %  DIMENSIONS:
-%  A(qxn), b(qx1), S(qxm), C(qxm), Q(nxn), where q are the number of constraints,
-%  n=number of x-variables; m=number of th-parameters
-% mpqpsol=mpqp(Q,     C, A,b,S,thmin,thmax,verbose,qpsolver,lpsolver,envelope)
+%  G(qxn), W(qx1), S(qxm), F_mp(nxm), Q_mp(nxn), where q are the number of constraints,
+%  n=N*nU (number of u-variables); m=nX (number of x-parameters)
 mpqpsol = mpqp(Q_mp,F_mp,G,W,S,thmin,thmax,verbose,'quadprog','linprog', envelope) ; 
 
 %% Let's plot the partition space
@@ -138,6 +149,7 @@ nr = mpqpsol.nr;
 ut = zeros(nU, simSteps);
 xt = zeros(nX, simSteps+1);
 xt(:, 1) = x0;
+lqr_costs = -1*ones(1,simSteps+1);
 while step <= simSteps
     j = -1;
     % Choose control
@@ -152,11 +164,15 @@ while step <= simSteps
         error("Control not found! Game is ending");
         %break
     else
+        disp("Control is: ")
         ut(:, step) = mpqpsol.F((j-1)*nU+1:j*nU,:)*xt(:, step) + mpqpsol.G((j-1)*nU+1:j*nU);
+        ut(:, step)
+        disp("------")
         if ~(u_mass - ep <= ones(nU, 1)'*ut(:, step) <= u_mass + ep)
             error("Input constraints are violated! Game is ending")
             break
         end
+        lqr_costs(step) = xt(:, step)'*Q*xt(:, step) + ut(:, step)'*R*ut(:, step);
         % Step env
         xt(:, step+1) = A*xt(:, step) + B*ut(:, step); 
         if ~(x_mass-ep<=ones(nX,1)'*xt(:, step+1)<=x_mass+ep)
@@ -166,6 +182,24 @@ while step <= simSteps
         step = step + 1 ;
     end
 end
+lqr_costs(simSteps+1) = xt(:, simSteps+1)'*P*xt(:, simSteps+1);
+
+% disp("Control is: ")
+% mpqpsol.F(1:3,:)*x0 + mpqpsol.G(1:3)
+% disp("------")
+
+%% Let's plot the partition space
+h=pwaplot(mpqpsol);
+figure(h);
+hold on;
+plot3(x0(1),x0(2),x0(3), "-o");
+for i=2:simSteps+1
+    %xt(1, i), xt(2, i), xt(3, i)
+    %plot3(xt(1, i), xt(2, i), xt(3, i), "-o");
+    plot3([xt(1, i-1) xt(1, i)], [xt(2, i-1) xt(2, i)], [xt(3, i-1) xt(3, i)],"-o");
+    pause(0.5)
+end
+hold off;
 
 %% Plot the results
 latencies = zeros(nX, simSteps);
@@ -174,7 +208,7 @@ for i=1:simSteps+1
     latencies(:, i) = L*xt(:, i) + b;
 end
 
-h1 = subplot(2,1,1);
+h1 = subplot(2,2,1:2);
 hold on
 t = 0:simSteps;
 plot(t, xt(1, :))
@@ -187,7 +221,7 @@ xlabel("t")
 title ("flow")
 hold off
 
-h2 = subplot(2,1,2); 
+h2 = subplot(2,2,3); 
 hold on
 t = 0:simSteps;
 plot(t,latencies(1, :))
@@ -199,6 +233,15 @@ ylabel("l(f_t(i))")
 xlabel("t")
 title ("latency")
 hold off
+
+h3 = subplot(2,2,4); 
+hold on
+t = 0:simSteps;
+plot(t, lqr_costs)
+axis([0 simSteps -inf inf])
+ylabel("cost_val")
+xlabel("t")
+title ("lqr_costs")
 
 %% Old example
 % A = [1/3 1/3 1/3;
